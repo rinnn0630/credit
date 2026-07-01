@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>日本旅遊 - 信用卡回饋計算機</title>
+    <title>日本旅遊 - 信用卡回饋計算機（支援台幣/日幣門檻）</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
@@ -17,11 +17,12 @@
         .status-warn { color: #e67e22; background: #fdf2e9; padding: 5px 10px; border-radius: 5px;}
         .status-danger { color: #c0392b; background: #fdedec; padding: 5px 10px; border-radius: 5px;}
         .loading { text-align: center; font-size: 1.2em; color: #7f8c8d; margin-top: 20px; }
+        .currency-badge { background: #34495e; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; margin-left: 6px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>💳 信用卡回饋額度計算機</h1>
+        <h1>💳 信用卡回饋額度計算機 <span style="font-size:0.5rem; color:#7f8c8d;">(支援台幣/日幣門檻)</span></h1>
         <div id="loading" class="loading">資料載入中，請稍候...</div>
         <div id="results"></div>
     </div>
@@ -36,7 +37,6 @@
 
         async function fetchData() {
             try {
-                // 同時請求兩個分頁的資料
                 const [recordsRes, rulesRes] = await Promise.all([
                     fetch(urlRecords),
                     fetch(urlRules)
@@ -45,7 +45,6 @@
                 const recordsCsv = await recordsRes.text();
                 const rulesCsv = await rulesRes.text();
 
-                // 解析 CSV 為 JSON 物件陣列
                 const recordsData = Papa.parse(recordsCsv, { header: true, skipEmptyLines: true }).data;
                 const rulesData = Papa.parse(rulesCsv, { header: true, skipEmptyLines: true }).data;
 
@@ -63,27 +62,30 @@
         }
 
         function processData(records, rules) {
-            // 整理回饋規則
+            // 整理回饋規則，加入「幣別」欄位
             const ruleList = rules.map(r => ({
                 keyword: r['卡別'] ? r['卡別'].trim() : '',
                 rate: r['回饋%'] || '未知',
                 min: cleanNumber(r['最低消費']),
-                max: cleanNumber(r['最高消費'])
+                max: cleanNumber(r['最高消費']),
+                currency: r['幣別'] ? r['幣別'].trim() : '台幣'   // 預設為台幣
             })).filter(r => r.keyword);
 
-            // 用來儲存每位使用者每張卡的累積金額
+            // 用來儲存每位使用者每張卡的累積金額（分台幣與日幣）
             const spendingStats = {};
 
             records.forEach(row => {
                 const cardName = row['卡別'] ? row['卡別'].trim() : '';
-                const twdAmount = cleanNumber(row['台幣總金額']);
+                const twd = cleanNumber(row['台幣總金額']);
+                const jpy = cleanNumber(row['日幣總金額']);
                 
                 if (!cardName) return;
 
                 if (!spendingStats[cardName]) {
-                    spendingStats[cardName] = 0;
+                    spendingStats[cardName] = { twd: 0, jpy: 0 };
                 }
-                spendingStats[cardName] += twdAmount;
+                spendingStats[cardName].twd += twd;
+                spendingStats[cardName].jpy += jpy;
             });
 
             renderResults(spendingStats, ruleList);
@@ -99,8 +101,9 @@
                 return;
             }
 
-            for (const [cardName, totalSpent] of Object.entries(stats)) {
-                // 尋找對應的規則：只要消費紀錄的卡別包含規則中的關鍵字 (例如 "A 太陽" 包含 "太陽")
+            for (const [cardName, amounts] of Object.entries(stats)) {
+                const twdTotal = amounts.twd;
+                const jpyTotal = amounts.jpy;
                 const matchedRule = ruleList.find(r => cardName.includes(r.keyword));
                 
                 const cardDiv = document.createElement('div');
@@ -112,28 +115,36 @@
                 if (matchedRule) {
                     const min = matchedRule.min;
                     const max = matchedRule.max;
-                    
+                    const currency = matchedRule.currency;
+                    // 根據幣別決定使用哪個金額來比較
+                    const spent = (currency === '日幣') ? jpyTotal : twdTotal;
+                    const currencyLabel = (currency === '日幣') ? '日幣' : '台幣';
+
                     ruleHtml = `
                         <div class="info-row">
                             <span class="info-label">適用規則：</span>
-                            <span class="info-value">${matchedRule.keyword} (${matchedRule.rate})</span>
+                            <span class="info-value">${matchedRule.keyword} (${matchedRule.rate}) <span class="currency-badge">${currencyLabel}門檻</span></span>
                         </div>
                         <div class="info-row">
-                            <span class="info-label">門檻 / 上限：</span>
+                            <span class="info-label">門檻 / 上限 (${currencyLabel})：</span>
                             <span class="info-value">${min.toLocaleString()} / ${max > 0 ? max.toLocaleString() : '無上限'}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">目前累積 (${currencyLabel})：</span>
+                            <span class="info-value" style="font-size:1.2em; color:#2c3e50;">${spent.toLocaleString()}</span>
                         </div>
                     `;
 
-                    // 邏輯判斷計算
-                    if (min > 0 && totalSpent < min) {
-                        const needMore = min - totalSpent;
-                        calcHtml = `<div class="info-row status-warn"><span class="info-label">狀態：</span><span class="info-value">⏳ 未達低消，還需刷 ${needMore.toLocaleString()} 元</span></div>`;
+                    // 邏輯判斷
+                    if (min > 0 && spent < min) {
+                        const needMore = min - spent;
+                        calcHtml = `<div class="info-row status-warn"><span class="info-label">狀態：</span><span class="info-value">⏳ 未達低消，還需刷 ${needMore.toLocaleString()} ${currencyLabel}</span></div>`;
                     } else if (max > 0) {
-                        if (totalSpent >= max) {
-                            calcHtml = `<div class="info-row status-danger"><span class="info-label">狀態：</span><span class="info-value">🛑 已達回饋上限！(超刷 ${(totalSpent - max).toLocaleString()} 元)</span></div>`;
+                        if (spent >= max) {
+                            calcHtml = `<div class="info-row status-danger"><span class="info-label">狀態：</span><span class="info-value">🛑 已達回饋上限！(超刷 ${(spent - max).toLocaleString()} ${currencyLabel})</span></div>`;
                         } else {
-                            const remain = max - totalSpent;
-                            calcHtml = `<div class="info-row status-ok"><span class="info-label">狀態：</span><span class="info-value">✅ 達標！額度還有 ${remain.toLocaleString()} 元</span></div>`;
+                            const remain = max - spent;
+                            calcHtml = `<div class="info-row status-ok"><span class="info-label">狀態：</span><span class="info-value">✅ 達標！額度還有 ${remain.toLocaleString()} ${currencyLabel}</span></div>`;
                         }
                     } else {
                         calcHtml = `<div class="info-row status-ok"><span class="info-label">狀態：</span><span class="info-value">✅ 無上限，請安心使用！</span></div>`;
@@ -145,8 +156,12 @@
                 cardDiv.innerHTML = `
                     <div class="card-title">${cardName}</div>
                     <div class="info-row">
-                        <span class="info-label">目前累積消費：</span>
-                        <span class="info-value" style="font-size:1.2em; color:#2c3e50;">${totalSpent.toLocaleString()} 元</span>
+                        <span class="info-label">台幣累積：</span>
+                        <span class="info-value">${twdTotal.toLocaleString()} 元</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">日幣累積：</span>
+                        <span class="info-value">${jpyTotal.toLocaleString()} 円</span>
                     </div>
                     ${ruleHtml}
                     ${calcHtml}
@@ -156,7 +171,6 @@
             }
         }
 
-        // 執行載入與計算
         fetchData();
     </script>
 </body>
