@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>信用卡回饋計算機（自動比對規則）</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+        }
+        body {
+            background: #f5f7fb;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+        h1 {
+            font-size: 24px;
+            color: #1e293b;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .subtitle {
+            color: #64748b;
+            font-size: 14px;
+            margin-bottom: 24px;
+            border-left: 4px solid #3b82f6;
+            padding-left: 14px;
+            background: #f8fafc;
+            border-radius: 0 8px 8px 0;
+            line-height: 1.6;
+        }
+        .refresh-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-left: auto;
+        }
+        .refresh-btn:hover {
+            background: #2563eb;
+        }
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .status.loading {
+            background: #fef9c3;
+            color: #854d0e;
+        }
+        .status.success {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .status .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 3px solid #e2e8f0;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+        .summary-card {
+            background: #f8fafc;
+            border-radius: 14px;
+            padding: 16px 18px;
+            border: 1px solid #e9edf2;
+            text-align: center;
+        }
+        .summary-card .card-name {
+            font-weight: 700;
+            color: #0f172a;
+            font-size: 16px;
+        }
+        .summary-card .card-total {
+            font-size: 26px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 6px 0 2px;
+        }
+        .summary-card .card-limit {
+            font-size: 13px;
+            color: #64748b;
+        }
+        .summary-card .card-status {
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 6px;
+            padding: 4px 12px;
+            border-radius: 30px;
+            display: inline-block;
+        }
+        .status-ok {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .status-warn {
+            background: #fef9c3;
+            color: #854d0e;
+        }
+        .status-full {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .status-na {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 14px;
+            border: 1px solid #e9edf2;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th {
+            background: #f1f5f9;
+            color: #334155;
+            font-weight: 600;
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        td {
+            padding: 11px 14px;
+            border-bottom: 1px solid #f1f5f9;
+            color: #1e293b;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        .highlight-full {
+            background: #fef2f2;
+        }
+        .highlight-ok {
+            background: #f0fdf4;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-full {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .badge-ok {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .badge-warn {
+            background: #fef9c3;
+            color: #854d0e;
+        }
+        .badge-na {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        .footer-note {
+            margin-top: 18px;
+            font-size: 13px;
+            color: #94a3b8;
+            text-align: center;
+        }
+        .settings-area {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 2px dashed #e2e8f0;
+        }
+        .settings-area summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #475569;
+            font-size: 14px;
+        }
+        .settings-area .hint {
+            font-size: 13px;
+            color: #64748b;
+            background: #f8fafc;
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin-top: 10px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .settings-area code {
+            background: #e9edf2;
+            padding: 1px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;">
+            <h1>💳 信用卡回饋計算機</h1>
+            <button class="refresh-btn" id="refreshBtn" onclick="fetchData()">🔄 重新整理</button>
+        </div>
+        <div class="subtitle">
+            ⚙️ 自動比對「消費紀錄」的卡別是否包含「回饋規則」中的關鍵字，套用最低／最高消費並計算剩餘額度
+        </div>
+
+        <div id="status" class="status loading">
+            <span class="spinner"></span> 讀取試算表資料...
+        </div>
+
+        <div id="summaryGrid" class="summary-grid"></div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>信用卡 (實際卡別)</th>
+                        <th>累積消費</th>
+                        <th>最低消費</th>
+                        <th>最高消費 (上限)</th>
+                        <th>剩餘可刷</th>
+                        <th>狀態</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="6" style="text-align:center;color:#94a3b8;">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer-note">
+            📌 資料來源：Google 試算表「消費紀錄」與「回饋規則」分頁
+        </div>
+
+        <div class="settings-area">
+            <details>
+                <summary>📖 比對規則說明</summary>
+                <div class="hint">
+                    <strong>匹配方式：</strong> 消費紀錄的「卡別」欄位若「包含」回饋規則中的「卡別」文字，即套用該規則。<br>
+                    <strong>舉例：</strong> 規則卡別為「玉山」，則卡別為「玉山Ubear」或「玉山Pi」都會套用同一規則。<br>
+                    ⚠️ 若多個規則同時匹配同一張卡，將以<strong>最先出現在規則分頁</strong>的為準（請避免重複）。
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        //  🔧 請設定你的試算表 ID 與分頁名稱
+        // ============================================================
+        const SPREADSHEET_ID = '11xAUd__Z3COgVmi_8IgCyCelEwkNecPwZdiRSZBrqVg';
+
+        // 分頁名稱（請與試算表一致）
+        const SHEET_CONSUMPTION = '消費紀錄';
+        const SHEET_RULES = '回饋規則';
+
+        // 欄位標題（請確認與試算表第一列完全相同）
+        const COL_CARD = '卡別';
+        const COL_AMOUNT = '台幣總金額';
+        const COL_RULE_CARD = '卡別';
+        const COL_RULE_RATE = '回饋%';
+        const COL_RULE_MIN = '最低消費';
+        const COL_RULE_MAX = '最高消費';
+
+        // ============================================================
+        //  以下為程式主體 — 請勿修改（除非你知道自己在做什麼）
+        // ============================================================
+
+        const STATUS_EL = document.getElementById('status');
+        const TABLE_BODY = document.getElementById('tableBody');
+        const SUMMARY_GRID = document.getElementById('summaryGrid');
+
+        function setStatus(type, message) {
+            STATUS_EL.className = 'status ' + type;
+            if (type === 'loading') {
+                STATUS_EL.innerHTML = `<span class="spinner"></span> ${message}`;
+            } else {
+                STATUS_EL.innerHTML = message;
+            }
+        }
+
+        // 讀取試算表指定分頁資料 (公開讀取)
+        async function fetchSheet(sheetName) {
+            const url =
+                `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(sheetName)}?alt=json`;
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                throw new Error(`無法讀取分頁「${sheetName}」 (HTTP ${resp.status})，請確認試算表已公開檢視`);
+            }
+            const data = await resp.json();
+            return data.values || [];
+        }
+
+        async function fetchData() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            setStatus('loading', '讀取試算表資料...');
+
+            try {
+                // 1. 讀取兩個分頁
+                const [consumptionRows, ruleRows] = await Promise.all([
+                    fetchSheet(SHEET_CONSUMPTION),
+                    fetchSheet(SHEET_RULES)
+                ]);
+
+                if (consumptionRows.length < 2) {
+                    throw new Error('消費紀錄分頁沒有資料或沒有標題列');
+                }
+                if (ruleRows.length < 2) {
+                    throw new Error('回饋規則分頁沒有資料或沒有標題列');
+                }
+
+                // 2. 解析消費紀錄標題
+                const conHeaders = consumptionRows[0];
+                const cardIdx = conHeaders.indexOf(COL_CARD);
+                const amtIdx = conHeaders.indexOf(COL_AMOUNT);
+                if (cardIdx === -1) throw new Error(`消費紀錄找不到欄位「${COL_CARD}」`);
+                if (amtIdx === -1) throw new Error(`消費紀錄找不到欄位「${COL_AMOUNT}」`);
+
+                // 3. 彙整各卡消費總額 (台幣)
+                const totalMap = {};
+                for (let i = 1; i < consumptionRows.length; i++) {
+                    const row = consumptionRows[i];
+                    if (!row || row.length === 0) continue;
+                    const card = row[cardIdx]?.trim();
+                    const amountStr = row[amtIdx]?.toString().trim().replace(/,/g, '');
+                    const amount = parseFloat(amountStr);
+                    if (!card || isNaN(amount) || amount <= 0) continue;
+                    if (!totalMap[card]) totalMap[card] = 0;
+                    totalMap[card] += amount;
+                }
+
+                // 4. 解析回饋規則
+                const ruleHeaders = ruleRows[0];
+                const ruleCardIdx = ruleHeaders.indexOf(COL_RULE_CARD);
+                const ruleRateIdx = ruleHeaders.indexOf(COL_RULE_RATE);
+                const ruleMinIdx = ruleHeaders.indexOf(COL_RULE_MIN);
+                const ruleMaxIdx = ruleHeaders.indexOf(COL_RULE_MAX);
+                if (ruleCardIdx === -1) throw new Error(`回饋規則找不到欄位「${COL_RULE_CARD}」`);
+                if (ruleMinIdx === -1) throw new Error(`回饋規則找不到欄位「${COL_RULE_MIN}」`);
+                if (ruleMaxIdx === -1) throw new Error(`回饋規則找不到欄位「${COL_RULE_MAX}」`);
+
+                const rules = [];
+                for (let i = 1; i < ruleRows.length; i++) {
+                    const row = ruleRows[i];
+                    if (!row || row.length === 0) continue;
+                    const keyword = row[ruleCardIdx]?.trim();
+                    const rate = row[ruleRateIdx]?.toString().trim() || '-';
+                    const minStr = row[ruleMinIdx]?.toString().trim().replace(/,/g, '');
+                    const maxStr = row[ruleMaxIdx]?.toString().trim().replace(/,/g, '');
+                    const min = parseFloat(minStr);
+                    const max = parseFloat(maxStr);
+                    if (!keyword || isNaN(min) || isNaN(max)) continue;
+                    rules.push({ keyword, rate, min, max });
+                }
+
+                if (rules.length === 0) {
+                    throw new Error('回饋規則分頁沒有有效的規則資料（請確認最低/最高消費為數字）');
+                }
+
+                // 5. 為每個實際卡別匹配規則 (依序，第一個匹配的規則生效)
+                const resultMap = {};
+                for (const [card, spent] of Object.entries(totalMap)) {
+                    let matchedRule = null;
+                    for (const rule of rules) {
+                        if (card.includes(rule.keyword)) {
+                            matchedRule = rule;
+                            break;
+                        }
+                    }
+                    resultMap[card] = {
+                        spent,
+                        rule: matchedRule,
+                        // 若無匹配，則無規則
+                    };
+                }
+
+                // 6. 產生顯示用資料 (只顯示有規則的卡，或全部顯示？我們顯示所有有消費的卡，但無規則者標示「無規則」)
+                const displayCards = [];
+                for (const [card, info] of Object.entries(resultMap)) {
+                    const rule = info.rule;
+                    if (rule) {
+                        displayCards.push({
+                            card,
+                            spent: info.spent,
+                            min: rule.min,
+                            max: rule.max,
+                            rate: rule.rate,
+                            hasRule: true
+                        });
+                    } else {
+                        // 無匹配規則，仍顯示但標示無規則
+                        displayCards.push({
+                            card,
+                            spent: info.spent,
+                            min: null,
+                            max: null,
+                            rate: null,
+                            hasRule: false
+                        });
+                    }
+                }
+
+                // 排序：先顯示有規則的
+                displayCards.sort((a, b) => (a.hasRule === b.hasRule ? 0 : a.hasRule ? -1 : 1));
+
+                // 7. 渲染
+                renderSummary(displayCards);
+                renderTable(displayCards);
+
+                const totalConsumption = Object.values(totalMap).reduce((a, b) => a + b, 0);
+                setStatus('success', `✅ 共 ${consumptionRows.length-1} 筆消費，累積台幣 $${totalConsumption.toLocaleString()}，共 ${displayCards.length} 張卡`);
+
+            } catch (error) {
+                console.error(error);
+                setStatus('error', '❌ ' + error.message);
+                TABLE_BODY.innerHTML =
+                    `<tr><td colspan="6" style="text-align:center;color:#991b1b;">${error.message}</td></tr>`;
+                SUMMARY_GRID.innerHTML = '';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function renderSummary(cards) {
+            let html = '';
+            for (const c of cards) {
+                let statusClass = 'status-na';
+                let statusText = '無規則';
+                if (c.hasRule) {
+                    if (c.spent >= c.max) {
+                        statusClass = 'status-full';
+                        statusText = '✅ 已達上限';
+                    } else if (c.spent >= c.min) {
+                        statusClass = 'status-ok';
+                        statusText = '👍 已達最低，可續刷';
+                    } else {
+                        statusClass = 'status-warn';
+                        statusText = '⚠️ 尚未達最低';
+                    }
+                }
+                html += `
+                    <div class="summary-card">
+                        <div class="card-name">${c.card}</div>
+                        <div class="card-total">$${c.spent.toLocaleString()}</div>
+                        <div class="card-limit">
+                            ${c.hasRule ? `最低 $${c.min.toLocaleString()} ｜ 上限 $${c.max.toLocaleString()}` : '未設定規則'}
+                        </div>
+                        <div class="card-status ${statusClass}">${statusText}</div>
+                    </div>
+                `;
+            }
+            SUMMARY_GRID.innerHTML = html;
+        }
+
+        function renderTable(cards) {
+            let html = '';
+            for (const c of cards) {
+                let badgeClass = 'badge-na';
+                let badgeText = '無規則';
+                let rowClass = '';
+                let remainingDisplay = '—';
+                let needToMin = '';
+
+                if (c.hasRule) {
+                    const remaining = Math.max(0, c.max - c.spent);
+                    if (c.spent >= c.max) {
+                        badgeClass = 'badge-full';
+                        badgeText = '✅ 已達上限';
+                        rowClass = 'highlight-full';
+                        remainingDisplay = '已達上限';
+                    } else if (c.spent >= c.min) {
+                        badgeClass = 'badge-ok';
+                        badgeText = '👍 可續刷';
+                        rowClass = 'highlight-ok';
+                        remainingDisplay = `$${remaining.toLocaleString()}`;
+                    } else {
+                        badgeClass = 'badge-warn';
+                        badgeText = '⚠️ 未達最低';
+                        rowClass = '';
+                        remainingDisplay = `$${remaining.toLocaleString()}`;
+                        const need = c.min - c.spent;
+                        needToMin = `還需 $${need.toLocaleString()} 達最低`;
+                    }
+                }
+
+                const minDisplay = c.hasRule ? `$${c.min.toLocaleString()}` : '—';
+                const maxDisplay = c.hasRule ? `$${c.max.toLocaleString()}` : '—';
+                const rateDisplay = c.hasRule ? c.rate : '—';
+
+                html += `
+                    <tr class="${rowClass}">
+                        <td><strong>${c.card}</strong> ${rateDisplay !== '—' ? `(${rateDisplay})` : ''}</td>
+                        <td>$${c.spent.toLocaleString()}</td>
+                        <td>${minDisplay}</td>
+                        <td>${maxDisplay}</td>
+                        <td>${remainingDisplay} ${needToMin ? `<br><small style="color:#854d0e;">${needToMin}</small>` : ''}</td>
+                        <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+                    </tr>
+                `;
+            }
+            TABLE_BODY.innerHTML = html;
+        }
+
+        window.addEventListener('DOMContentLoaded', fetchData);
+    </script>
+</body>
+</html>
